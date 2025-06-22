@@ -1,16 +1,40 @@
 import pygame
 import random
 import sys
-import math
 
 pygame.init()
-fps = 60
+FPS = 60
 timer = pygame.time.Clock()
 
 WIDTH = 900
 HEIGHT = 800
-FONT = pygame.font.SysFont("monospace", 24)
+FONT = pygame.font.Font("assets/font/ARMY RUST.ttf", 32)
+
 screen = pygame.display.set_mode([WIDTH, HEIGHT])
+
+background = pygame.image.load("assets/background.png").convert()
+background = pygame.transform.scale(background, (WIDTH, HEIGHT))
+
+gun_idle = pygame.image.load("assets/shotgun/shotgun.png").convert_alpha()
+gun_idle = pygame.transform.scale(gun_idle, (450, 270))
+
+gun_frames = [pygame.image.load(f"assets/shotgun/shotgun_fire{i}.png").convert_alpha() for i in range(6)]
+gun_frames = [pygame.transform.scale(img, (500, 350)) for img in gun_frames]
+
+dfuck_fly_frames = [pygame.image.load(f"assets/dfuck/dfuck{i}.png").convert_alpha() for i in range(1,6)]
+dfuck_fly_frames = [pygame.transform.scale(img, (100, 100)) for img in dfuck_fly_frames]
+
+dfuck_die_frames = [pygame.image.load(f"assets/dfuck/dfuck_die{i}.png").convert_alpha() for i in range(1,5)]
+dfuck_die_frames = [pygame.transform.scale(img, (100, 100)) for img in dfuck_die_frames]
+
+warrior_fly_frames = [pygame.image.load(f"assets/warrior_dfuck/warrior_dfuck{i}.png").convert_alpha() for i in range(1, 6)]
+warrior_fly_frames = [pygame.transform.scale(img, (100, 100)) for img in warrior_fly_frames]
+
+warrior_die_frames = [pygame.image.load(f"assets/warrior_dfuck/warrior_dfuck_die{i}.png").convert_alpha() for i in range(1, 6)]
+warrior_die_frames = [pygame.transform.scale(img, (100, 100)) for img in warrior_die_frames]
+
+poop_img = pygame.image.load("assets/poop.png").convert_alpha()
+poop_img = pygame.transform.scale(poop_img, (90, 90))
 
 class Player:
     def __init__(self):
@@ -33,75 +57,224 @@ class Player:
         self.ammo = self.max_ammo
 
 class Dfuck:
+    DUCK_SIZE = 100
+    
     def __init__(self):
-        self.rect = pygame.Rect(random.randint(0, WIDTH - 50), random.randint(50, HEIGHT - 50), 50, 50)
+        self.rect = pygame.Rect(
+        random.randint(0, WIDTH - self.DUCK_SIZE), 
+        random.randint(50, HEIGHT - self.DUCK_SIZE), 
+        self.DUCK_SIZE, 
+        self.DUCK_SIZE
+        )
         self.vel = random.choice([3, 4, 5])
+        self.anim_index = 0
+        self.anim_timer = 0
 
     def move(self):
         self.rect.x += self.vel
         
         if self.rect.x > WIDTH: 
-            self.rect.x = -50
+            self.rect.x = -self.DUCK_SIZE
 
-    def draw(self, win):
-        pygame.draw.rect(win, (200, 200, 200), self.rect)
+    def update_animation(self, frames, anim_speed = 10):
+        self.anim_timer += 1
+        if self.anim_timer % anim_speed == 0:
+            self.anim_index = (self.anim_index + 1) % len(frames) 
+
+    def draw(self, screen):
+        pass
 
 class DfuckVurnelable(Dfuck):
+    def __init__(self):
+        super().__init__()
+        self.is_dead = False
+        self.die_anim_index = 0
+        self.die_anim_timer = 0
+    
     def hit(self, player, mode):
         player.hits += 1
-        if mode == "survival":
-            player.hp = min(100, player.hp + 1)
+        player.hp = min(player.hp + 1, 100)
+        self.is_dead = True
+    
+    def update(self):
+        if self.is_dead:
+            self.die_anim_timer += 1
+            if self.die_anim_timer % 10 == 0:
+                self.die_anim_index += 1
+                if self.die_anim_index >= len(dfuck_die_frames):
+                    return True
+        else:
+            self.move()
+            self.update_animation(dfuck_fly_frames)
+        return False
+    
+    def draw(self, screen):
+        if self.is_dead:
+            if self.die_anim_index < len(dfuck_die_frames):
+                screen.blit(dfuck_die_frames[self.die_anim_index], self.rect.topleft)
+        else:
+            screen.blit(dfuck_fly_frames[self.anim_index], self.rect.topleft)
 
 
 class DfuckArmed(Dfuck):
     def __init__(self):
         super().__init__()
+        self.is_dead = False
+        self.die_anim_index = 0
+        self.die_anim_timer = 0 
         self.next_poop = random.randint(100, 300)
-    
+        self.poops = []
+
     def hit(self, player, mode):
         player.hits += 1
+        self.is_dead = True
 
-    def update(self, player):
-        self.next_poop -= 1
-        if self.next_poop <= 0:
-            player.hp -= 5
-            self.next_poop = random.randint(100, 300)
+    def update(self, player = None):
+        if self.is_dead:
+            self.die_anim_timer += 1
+            if self.die_anim_timer % 10 == 0:
+                self.die_anim_index += 1
+                if self.die_anim_index >= len(warrior_die_frames):
+                    return True
+        else:
+            self.move()
+            self.update_animation(warrior_fly_frames)
+            self.next_poop -= 1
+
+            if self.next_poop <= 0:
+                self.poops.append(Poop(self.rect.centerx, self.rect.bottom))
+                self.next_poop = random.randint(100, 300)
+            
+            for poop in self.poops[:]:
+                if poop.update():
+                    if player:
+                        player.hp = max(player.hp - 20, 0)
+                    self.poops.remove(poop)
+        return False
+    
+    def draw(self, screen):
+        if self.is_dead:
+            if self.die_anim_index < len(warrior_die_frames):
+                screen.blit(warrior_die_frames[self.die_anim_index], self.rect.topleft)
+        else:
+            screen.blit(warrior_fly_frames[self.anim_index], self.rect.topleft)
+
+        for poop in self.poops:
+            poop.draw(screen)
+
+class Poop:
+    def __init__(self, x, y):
+        self.image = poop_img
+        self.rect = self.image.get_rect(center = (x, y))
+        self.speed = 5
+
+    def update(self):
+        self.rect.y += self.speed
+        return self.rect.y > HEIGHT
+    
+    def draw(self, screen):
+        screen.blit(self.image, self.rect.topleft)
+
+class Menu:
+    def __init__(self, screen):
+        self.screen = screen
+        self.buttons = {
+            "Training": pygame.Rect(WIDTH // 2 - 100, 300, 200, 50),
+            "Survival": pygame.Rect(WIDTH // 2 - 100, 400, 200, 50),
+            "Exit": pygame.Rect(WIDTH // 2 - 100, 500, 200, 50)
+        }
+        self.background = pygame.image.load("assets/menu.png").convert()
+        self.background = pygame.transform.scale(self.background, (WIDTH, HEIGHT))
+    
+    def draw(self):
+        self.screen.blit(self.background, (0, 0))
+
+        for text, rect in self.buttons.items():
+            pygame.draw.rect(self.screen, (100, 100, 255), rect)
+            label = FONT.render(text, True, (255, 255, 255))
+            self.screen.blit(label, (rect.x + rect.width // 2 - label.get_width() // 2, rect.y + 10))
+
+        pygame.display.update()
+
+    def run(self):
+        while True:
+            self.draw()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    pos = event.pos
+                    for name, rect in self.buttons.items():
+                        if rect.collidepoint(pos):
+                            if name == "Exit":
+                                pygame.quit()
+                                sys.exit()
+                            return name.lower()
 
 def main(mode="training"):
     clock = pygame.time.Clock()
     player = Player()
     enemies = [DfuckVurnelable() if random.random()<0.7 else DfuckArmed() for _ in range(5)]
     run = True
+
+    gun_anim_index = 0
+    gun_anim_timer = 0
+    gun_animating = False
     
     while run:
-        clock.tick(fps)
-        for e in pygame.event.get():
-            if e.type == pygame.QUIT:
+        clock.tick(FPS)
+
+        if gun_animating:
+            gun_anim_timer += 1
+            if gun_anim_timer % 2 == 0:
+                gun_anim_index += 1
+                if gun_anim_index >= len(gun_frames):
+                    gun_animating = False
+                    gun_anim_index = 0
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
                 run = False
-            if e.type == pygame.MOUSEBUTTONDOWN:
+            if event.type == pygame.MOUSEBUTTONDOWN:
                 if player.fire() or mode == "training":
+                    gun_animating = True
+                    gun_anim_index = 0
+                    gun_anim_timer = 0
                     for d in enemies:
-                        if d.rect.collidepoint(e.pos):
+                        if d.rect.collidepoint(event.pos):
                             d.hit(player, mode)
-                            enemies.remove(d)
-                            enemies.append(DfuckVurnelable() if random.random()<0.7 else DfuckArmed())
                             break
         
-        for d in enemies:
-            d.move()
-            if isinstance(d, DfuckArmed):
-                d.update(player)
+        for d in enemies[:]:
+            remove = False
+            if isinstance(d, DfuckVurnelable):
+                remove = d.update()
+            else:
+                remove = d.update(player)
+
+            if remove:
+                enemies.remove(d)
+                enemies.append(DfuckVurnelable() if random.random() < 0.7 else DfuckArmed())
 
         
         if mode == "survival" and player.hp <= 0:
             run = False
             
-        screen.fill((50, 50, 50))
+        screen.blit(background, (0, 0))
         for e in enemies: 
             e.draw(screen)
 
         txt = f"HP: {player.hp:.0f}% Hits: {player.hits} Shoots: {player.shots}"
-        screen.blit(FONT.render(txt, True, (255, 255, 255)), (10, 10))
+        screen.blit(FONT.render(txt, True, (255, 255, 255)), (10, 10)) 
+
+        if gun_animating:
+            current_gun_img = gun_frames[gun_anim_index]
+        else:
+            current_gun_img = gun_idle
+            
+        screen.blit(current_gun_img, (WIDTH // 2 - current_gun_img.get_width() // 2, HEIGHT - current_gun_img.get_height()))
+
         pygame.display.update()
 
     screen.fill((0, 0, 0))
@@ -109,8 +282,8 @@ def main(mode="training"):
         percentage = (player.hits/player.shots*100) if player.shots > 0 else 0
         msg = f"Ratio: {percentage:.1f}%"
     else:
-        msg: f"You've shot {player.hits} freaking dfucks"
-        
+        msg = f"You've shot {player.hits} freaking dfucks"
+
     screen.blit(FONT.render(msg, True, (255, 0, 0)), (WIDTH // 2 - 100, HEIGHT // 2))
     pygame.display.update()
     pygame.time.delay(5000)
@@ -118,4 +291,6 @@ def main(mode="training"):
     sys.exit()
 
 if __name__ == "__main__":
-    main("survival")
+    menu = Menu(screen)
+    mode = menu.run()
+    main(mode)
