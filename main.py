@@ -1,16 +1,17 @@
 import pygame
 import random
 import sys
+import time
 
-pygame.init()
 FPS = 60
-timer = pygame.time.Clock()
-
 WIDTH = 900
 HEIGHT = 800
-FONT = pygame.font.Font("assets/font/ARMY RUST.ttf", 32)
 
+pygame.init()
+
+FONT = pygame.font.Font("assets/font/ARMY RUST.ttf", 32)
 screen = pygame.display.set_mode([WIDTH, HEIGHT])
+timer = pygame.time.Clock()
 
 background = pygame.image.load("assets/background.png").convert()
 background = pygame.transform.scale(background, (WIDTH, HEIGHT))
@@ -167,7 +168,7 @@ class DfuckArmed(Dfuck):
             for poop in self.poops[:]:
                 if poop.update():
                     if player and mode != "training":
-                        player.hp = max(player.hp - 20, 0)
+                        player.hp = max(player.hp - player.dmg_from_poop, 0)
                     self.poops.remove(poop)
         return False
     
@@ -260,7 +261,7 @@ class LevelManager:
         return 1.0
 
     def get_poop_damage(self):
-        base = 20
+        base = 5
         if 10 <= self.level < 20:
             return base + 5
         elif 20 <= self.level < 30:
@@ -269,11 +270,69 @@ class LevelManager:
             return base + 20
         return base
 
+    def get_armed_chance(self):
+        return min(0.3 + self.level * 0.01, 0.6)
+
+def show_summary(screen, player, mode, elapsed_seconds, level_manager=None):
+    overlay = pygame.Surface((WIDTH, HEIGHT))
+    overlay.set_alpha(180)  # przezroczystość tła
+    overlay.fill((0, 0, 0))
+    screen.blit(background, (0, 0))
+    screen.blit(overlay, (0, 0))
+
+    minutes = elapsed_seconds // 60
+    seconds = elapsed_seconds % 60
+    accuracy = (player.hits / player.shots * 100) if player.shots > 0 else 0
+
+    lines = []
+    if mode == "training":
+        lines = [
+            f"Trening zakończony!",
+            f"Strzały: {player.shots}",
+            f"Trafienia: {player.hits}",
+            f"Celność: {accuracy:.1f}%",
+            f"Czas: {minutes}m {seconds}s",
+            "",
+            "Kliknij mysz lub naciśnij dowolny klawisz, aby wyjść"
+        ]
+    else:
+        lines = [
+            f"Przegrana!",
+            f"Poziom: {level_manager.level}",
+            f"Strzały: {player.shots}",
+            f"Trafienia: {player.hits}",
+            f"Celność: {accuracy:.1f}%",
+            f"Czas: {minutes}m {seconds}s",
+            "",
+            "Kliknij mysz lub naciśnij dowolny klawisz, aby wyjść"
+        ]
+
+    y = HEIGHT // 3
+    for line in lines:
+        text_surf = FONT.render(line, True, (255, 255, 255))
+        text_rect = text_surf.get_rect(center=(WIDTH // 2, y))
+        screen.blit(text_surf, text_rect)
+        y += 40
+
+    pygame.display.update()
+
+    waiting = True
+    while waiting:
+        for event in pygame.event.get():
+            if event.type in (pygame.MOUSEBUTTONDOWN, pygame.KEYDOWN, pygame.QUIT):
+                waiting = False
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+        pygame.time.Clock().tick(30)
+
 
 def main(mode="training"):
+    start_time = time.time()
     clock = pygame.time.Clock()
     player = Player()
     enemies = [DfuckVurnelable() if random.random()<0.7 else DfuckArmed() for _ in range(5)]
+    level_manager = LevelManager()
     run = True
     pygame.mouse.set_visible(False)
 
@@ -290,7 +349,7 @@ def main(mode="training"):
     while run:
         clock.tick(FPS)
         player.update_reload()
-        level_manager = LevelManager()
+
         if gun_animating:
             gun_anim_timer += 1
             if gun_anim_timer % 2 == 0:
@@ -314,10 +373,14 @@ def main(mode="training"):
             if gun_show_y <= HEIGHT - gun_idle.get_height():
                 gun_showing = False
                 gun_show_y = HEIGHT - gun_idle.get_height()
-        
+               
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
+                end_time = time.time()
+                elapsed = int(end_time - start_time)
+                show_summary(screen, player, mode, elapsed, level_manager)
+
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if player.ammo == 0 and not player.is_reloading and not gun_hiding:
                     gun_hiding = True
@@ -331,30 +394,42 @@ def main(mode="training"):
                             d.hit(player, mode)
                             break
         
-        for d in enemies[:]:
-            remove = False
+        enemies_to_remove = []
+        for d in enemies:
             if isinstance(d, DfuckVurnelable):
                 remove = d.update()
             else:
                 remove = d.update(player)
+            if remove:
+                enemies_to_remove.append(d)
 
-        if remove:
+        for d in enemies_to_remove:
             enemies.remove(d)
             level_manager.update(player.hits)
 
-            spawn_chance = level_manager.get_spawn_chance()
             speed_multiplier = level_manager.get_speed_multiplier()
             poop_dmg = level_manager.get_poop_damage()
 
-            new_duck = DfuckVurnelable() if random.random() < spawn_chance else DfuckArmed()
+            armed_chance = level_manager.get_armed_chance()
+            new_duck = DfuckArmed() if random.random() < armed_chance else DfuckVurnelable()
             new_duck.vel = int(new_duck.vel * speed_multiplier)
 
             player.dmg_from_poop = poop_dmg
             enemies.append(new_duck)
-
         
         if mode == "survival" and player.hp <= 0:
             run = False
+            end_time = time.time()
+            elapsed = int(end_time - start_time)
+            show_summary(screen, player, mode, elapsed)
+
+        if mode == "training":
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    run = False
+                    end_time = time.time()
+                    elapsed = int(end_time - start_time)
+                    show_summary(screen, player, mode, elapsed)
             
         screen.blit(background, (0, 0))
         for e in enemies: 
@@ -379,19 +454,51 @@ def main(mode="training"):
                                 mouse_pos[1] - crosshair.get_height() // 2))
         pygame.display.update()
 
-    screen.fill((0, 0, 0))
-    if mode == "training":
-        percentage = (player.hits/player.shots*100) if player.shots > 0 else 0
-        msg = f"Ratio: {percentage:.1f}%"
-    else:
-        msg = f"You've shot {player.hits} freaking dfucks"
+    pygame.mouse.set_visible(True)
+    overlay = pygame.Surface((WIDTH, HEIGHT))
+    overlay.set_alpha(180)
+    overlay.fill((0, 0, 0))
+    screen.blit(background, (0, 0))
+    screen.blit(overlay, (0, 0))
 
-    screen.blit(FONT.render(msg, True, (255, 0, 0)), (WIDTH // 2 - 100, HEIGHT // 2))
+    summary_title = "Training Summary" if mode == "training" else "Game Over"
+    accuracy = (player.hits / player.shots * 100) if player.shots > 0 else 0
+    summary_lines = [
+        f"Shots fired: {player.shots}",
+        f"Hits: {player.hits}",
+        f"Accuracy: {accuracy:.1f}%",
+        f"Time: {minutes}m {seconds}s"
+    ]
+
+    if mode == "survival":
+        summary_lines.insert(0, f"Final Level: {level_manager.level}")
+
+    title_text = FONT.render(summary_title, True, (255, 0, 0))
+    screen.blit(title_text, (WIDTH // 2 - title_text.get_width() // 2, 150))
+
+    for i, line in enumerate(summary_lines):
+        text_surf = FONT.render(line, True, (255, 255, 255))
+        screen.blit(text_surf, (WIDTH // 2 - text_surf.get_width() // 2, 250 + i * 50))
+
+    back_rect = pygame.Rect(WIDTH // 2 - 100, 600, 200, 50)
+    pygame.draw.rect(screen, (100, 100, 255), back_rect)
+    label = FONT.render("Back to Menu", True, (255, 255, 255))
+    screen.blit(label, (back_rect.x + back_rect.width // 2 - label.get_width() // 2, back_rect.y + 10))
 
     pygame.display.update()
-    pygame.time.delay(5000)
-    pygame.quit()
-    sys.exit()
+
+    waiting = True
+    while waiting:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if back_rect.collidepoint(event.pos):
+                    waiting = False
+
+    mode = menu.run()
+    main(mode)
 
 
 if __name__ == "__main__":
