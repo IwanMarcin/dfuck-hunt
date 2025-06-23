@@ -36,6 +36,8 @@ warrior_die_frames = [pygame.transform.scale(img, (100, 100)) for img in warrior
 poop_img = pygame.image.load("assets/poop.png").convert_alpha()
 poop_img = pygame.transform.scale(poop_img, (90, 90))
 
+crosshair = pygame.image.load("assets/crosshair.png").convert_alpha()
+
 class Player:
     def __init__(self):
         self.hp = 100
@@ -43,28 +45,45 @@ class Player:
         self.max_ammo = 12
         self.shots = 0
         self.hits = 0
+        self.is_reloading = False
+        self.reload_timer = 0
+        self.reload_duration = 150 
 
     def fire(self):
+        if self.is_reloading:
+            return False
+
         if self.ammo == 0:
-            self.reload()  
-        if self.ammo > 0:
-            self.shots += 1
-            self.ammo -= 1
-            return True
-        return False
+            self.start_reload()
+            return False
+
+        self.shots += 1
+        self.ammo -= 1
+        return True
+
+    def start_reload(self):
+        if not self.is_reloading:
+            self.is_reloading = True
+            self.reload_timer = self.reload_duration
+
+    def update_reload(self):
+        if self.is_reloading:
+            self.reload_timer -= 1
+            if self.reload_timer <= 0:
+                self.reload()
+                self.is_reloading = False
 
     def reload(self):
         self.ammo = self.max_ammo
 
 class Dfuck:
     DUCK_SIZE = 100
-    
     def __init__(self):
         self.rect = pygame.Rect(
-        random.randint(0, WIDTH - self.DUCK_SIZE), 
-        random.randint(50, HEIGHT - self.DUCK_SIZE), 
-        self.DUCK_SIZE, 
-        self.DUCK_SIZE
+            -self.DUCK_SIZE,
+            random.randint(0, int(HEIGHT * 0.4) - self.DUCK_SIZE),
+            self.DUCK_SIZE,
+            self.DUCK_SIZE
         )
         self.vel = random.choice([3, 4, 5])
         self.anim_index = 0
@@ -147,7 +166,7 @@ class DfuckArmed(Dfuck):
             
             for poop in self.poops[:]:
                 if poop.update():
-                    if player:
+                    if player and mode != "training":
                         player.hp = max(player.hp - 20, 0)
                     self.poops.remove(poop)
         return False
@@ -212,19 +231,66 @@ class Menu:
                                 sys.exit()
                             return name.lower()
 
+class LevelManager:
+    def __init__(self):
+        self.level = 1
+        self.score_for_next = 10
+    
+    def update(self, hits):
+        if hits >= self.level * self.score_for_next and self.level < 50:
+            self.level += 1
+
+    def get_spawn_chance(self):
+        base = 0.7
+        if 10 <= self.level < 20:
+            return base + 0.05
+        elif 30 <= self.level < 40:
+            return base + 0.10
+        elif 40 <= self.level <= 50:
+            return base + 0.20
+        return base
+
+    def get_speed_multiplier(self):
+        if 20 <= self.level < 30:
+            return 1.10
+        elif 30 <= self.level < 40:
+            return 1.05
+        elif 40 <= self.level <= 50:
+            return 1.10
+        return 1.0
+
+    def get_poop_damage(self):
+        base = 20
+        if 10 <= self.level < 20:
+            return base + 5
+        elif 20 <= self.level < 30:
+            return base + 10
+        elif 40 <= self.level <= 50:
+            return base + 20
+        return base
+
+
 def main(mode="training"):
     clock = pygame.time.Clock()
     player = Player()
     enemies = [DfuckVurnelable() if random.random()<0.7 else DfuckArmed() for _ in range(5)]
     run = True
+    pygame.mouse.set_visible(False)
 
     gun_anim_index = 0
     gun_anim_timer = 0
     gun_animating = False
+    gun_hiding = False
+    gun_hide_y = HEIGHT - gun_idle.get_height()
+    gun_hide_speed = 20
+    gun_showing = False
+    gun_show_y = HEIGHT
+    gun_show_speed = 20
     
     while run:
         clock.tick(FPS)
-
+        player.update_reload()
+        level_manager = LevelManager()
         if gun_animating:
             gun_anim_timer += 1
             if gun_anim_timer % 2 == 0:
@@ -233,11 +299,30 @@ def main(mode="training"):
                     gun_animating = False
                     gun_anim_index = 0
         
+        if gun_hiding:
+            gun_hide_y += gun_hide_speed
+            if gun_hide_y > HEIGHT:
+                gun_hiding = False
+                player.start_reload()
+                gun_showing = True
+                gun_show_y = HEIGHT
+        else:
+            player.update_reload()
+
+        if gun_showing:
+            gun_show_y -= gun_show_speed
+            if gun_show_y <= HEIGHT - gun_idle.get_height():
+                gun_showing = False
+                gun_show_y = HEIGHT - gun_idle.get_height()
+        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 run = False
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if player.fire() or mode == "training":
+                if player.ammo == 0 and not player.is_reloading and not gun_hiding:
+                    gun_hiding = True
+                    gun_hide_y = HEIGHT - gun_idle.get_height()
+                elif player.fire() or mode == "training":
                     gun_animating = True
                     gun_anim_index = 0
                     gun_anim_timer = 0
@@ -253,9 +338,19 @@ def main(mode="training"):
             else:
                 remove = d.update(player)
 
-            if remove:
-                enemies.remove(d)
-                enemies.append(DfuckVurnelable() if random.random() < 0.7 else DfuckArmed())
+        if remove:
+            enemies.remove(d)
+            level_manager.update(player.hits)
+
+            spawn_chance = level_manager.get_spawn_chance()
+            speed_multiplier = level_manager.get_speed_multiplier()
+            poop_dmg = level_manager.get_poop_damage()
+
+            new_duck = DfuckVurnelable() if random.random() < spawn_chance else DfuckArmed()
+            new_duck.vel = int(new_duck.vel * speed_multiplier)
+
+            player.dmg_from_poop = poop_dmg
+            enemies.append(new_duck)
 
         
         if mode == "survival" and player.hp <= 0:
@@ -265,16 +360,23 @@ def main(mode="training"):
         for e in enemies: 
             e.draw(screen)
 
-        txt = f"HP: {player.hp:.0f}% Hits: {player.hits} Shoots: {player.shots}"
+        txt = f"Level: {level_manager.level} | HP: {player.hp:.0f}% Hits: {player.hits} Shoots: {player.shots}"
+
         screen.blit(FONT.render(txt, True, (255, 255, 255)), (10, 10)) 
 
-        if gun_animating:
+        if gun_hiding:
+            screen.blit(gun_idle, (WIDTH // 2 - gun_idle.get_width() // 2, gun_hide_y))
+        elif gun_showing:
+            screen.blit(gun_idle, (WIDTH // 2 - gun_idle.get_width() // 2, gun_show_y))
+        elif gun_animating:
             current_gun_img = gun_frames[gun_anim_index]
+            screen.blit(current_gun_img, (WIDTH // 2 - current_gun_img.get_width() // 2, HEIGHT - current_gun_img.get_height()))
         else:
-            current_gun_img = gun_idle
-            
-        screen.blit(current_gun_img, (WIDTH // 2 - current_gun_img.get_width() // 2, HEIGHT - current_gun_img.get_height()))
+            screen.blit(gun_idle, (WIDTH // 2 - gun_idle.get_width() // 2, HEIGHT - gun_idle.get_height()))
 
+        mouse_pos = pygame.mouse.get_pos()
+        screen.blit(crosshair, (mouse_pos[0] - crosshair.get_width() // 2,
+                                mouse_pos[1] - crosshair.get_height() // 2))
         pygame.display.update()
 
     screen.fill((0, 0, 0))
@@ -285,10 +387,12 @@ def main(mode="training"):
         msg = f"You've shot {player.hits} freaking dfucks"
 
     screen.blit(FONT.render(msg, True, (255, 0, 0)), (WIDTH // 2 - 100, HEIGHT // 2))
+
     pygame.display.update()
     pygame.time.delay(5000)
     pygame.quit()
     sys.exit()
+
 
 if __name__ == "__main__":
     menu = Menu(screen)
