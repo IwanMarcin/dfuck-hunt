@@ -8,11 +8,36 @@ WIDTH = 900
 HEIGHT = 800
 
 pygame.init()
+pygame.mixer.init()
+pygame.mixer.set_num_channels(16)
 
 FONT = pygame.font.Font("assets/font/ARMY RUST.ttf", 32)
 screen = pygame.display.set_mode([WIDTH, HEIGHT])
 timer = pygame.time.Clock()
 
+def play_shot():
+    sound = pygame.mixer.Sound("assets/sounds/gunshot.mp3")
+    sound.set_volume(0.5)
+    sound.play()
+
+def play_reload():
+    sound = pygame.mixer.Sound("assets/sounds/gunreload.wav")
+    sound.play()
+
+def play_quack():
+    sound = pygame.mixer.Sound("assets/sounds/quack.mp3")
+    sound.play()
+
+def play_music():
+    pygame.mixer.music.load("assets/sounds/music.mp3")
+    pygame.mixer.music.set_volume(0.5)
+    pygame.mixer.music.play(-1)
+
+def game_over():
+    sound = pygame.mixer.Sound("assets/sounds/game_over.mp3")
+    sound.play()
+
+play_music()
 background = pygame.image.load("assets/background.png").convert()
 background = pygame.transform.scale(background, (WIDTH, HEIGHT))
 
@@ -58,6 +83,7 @@ class Player:
             self.start_reload()
             return False
 
+        play_shot()
         self.shots += 1
         self.ammo -= 1
         return True
@@ -66,6 +92,7 @@ class Player:
         if not self.is_reloading:
             self.is_reloading = True
             self.reload_timer = self.reload_duration
+            play_reload()
 
     def update_reload(self):
         if self.is_reloading:
@@ -114,6 +141,7 @@ class DfuckVurnelable(Dfuck):
     def hit(self, player, mode):
         player.hits += 1
         player.hp = min(player.hp + 1, 100)
+        play_quack()
         self.is_dead = True
     
     def update(self):
@@ -147,6 +175,7 @@ class DfuckArmed(Dfuck):
 
     def hit(self, player, mode):
         player.hits += 1
+        play_quack()
         self.is_dead = True
 
     def update(self, player = None):
@@ -418,6 +447,7 @@ def main(mode="training"):
             enemies.append(new_duck)
         
         if mode == "survival" and player.hp <= 0:
+            game_over()
             run = False
             end_time = time.time()
             elapsed = int(end_time - start_time)
