@@ -1,5 +1,4 @@
 import pygame
-import sys
 import time
 import random
 from player import Player
@@ -11,6 +10,7 @@ from assets import screen, background, gun_idle, gun_frames, FONT, WIDTH, HEIGHT
 from utils import show_summary
 
 FPS = 60
+muted = False
 
 def main(mode="training"):
     start_time = time.time()
@@ -21,7 +21,6 @@ def main(mode="training"):
     run = True
     pygame.mouse.set_visible(False)
 
-    # zmienne animacji broni
     gun_anim_index = 0
     gun_anim_timer = 0
     gun_animating = False
@@ -36,7 +35,6 @@ def main(mode="training"):
         clock.tick(FPS)
         player.update_reload()
 
-        # obsługa animacji broni
         if gun_animating:
             gun_anim_timer += 1
             if gun_anim_timer % 2 == 0:
@@ -62,6 +60,18 @@ def main(mode="training"):
                 gun_show_y = HEIGHT - gun_idle.get_height()
 
         for event in pygame.event.get():
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    run = False
+                    elapsed = int(time.time() - start_time)
+                    show_summary(screen, player, mode, elapsed, level_manager)
+                elif event.key == pygame.K_m:
+                    global muted
+                    muted = not muted
+                    if muted:
+                        pygame.mixer.music.pause()
+                    else:
+                        pygame.mixer.music.unpause()
             if event.type == pygame.QUIT:
                 run = False
                 elapsed = int(time.time() - start_time)
@@ -104,14 +114,35 @@ def main(mode="training"):
             game_over()
             run = False
             elapsed = int(time.time() - start_time)
-            show_summary(screen, player, mode, elapsed)
+            show_summary(screen, player, mode, elapsed, level_manager)
 
         screen.blit(background, (0, 0))
         for e in enemies:
             e.draw(screen)
 
-        txt = f"Level: {level_manager.level} | HP: {player.hp:.0f}% Hits: {player.hits} Shoots: {player.shots}"
-        screen.blit(FONT.render(txt, True, (255, 255, 255)), (10, 10))
+        info_panel_width = 200
+        info_panel_height = 130
+        info_panel_x = WIDTH - info_panel_width 
+        info_panel_y = HEIGHT - info_panel_height 
+        info_panel_color = (0, 0, 0, 150)
+
+        info_panel = pygame.Surface((info_panel_width, info_panel_height), pygame.SRCALPHA)
+        info_panel.fill(info_panel_color)
+
+        lines = [
+            f"Level: {level_manager.level}",
+            f"HP: {player.hp:.0f}%",
+            f"Ammo: {player.ammo}/{player.max_ammo}",
+            f"Hits: {player.hits}",
+            f"Shots: {player.shots}"
+        ]
+
+        line_height = 24
+        for i, line in enumerate(lines):
+            text_surf = FONT.render(line, True, (255, 255, 255))
+            info_panel.blit(text_surf, (10, 10 + i * line_height))
+
+        screen.blit(info_panel, (info_panel_x, info_panel_y))
 
         if gun_hiding:
             screen.blit(gun_idle, (WIDTH // 2 - gun_idle.get_width() // 2, gun_hide_y))
@@ -131,5 +162,11 @@ if __name__ == "__main__":
     pygame.init()
     play_music()
     menu = Menu(screen)
-    mode = menu.run()
-    main(mode)
+
+    while True:
+        pygame.mouse.set_visible(True)
+        mode = menu.run()
+        if mode == "exit":
+            pygame.quit()
+            break
+        main(mode)

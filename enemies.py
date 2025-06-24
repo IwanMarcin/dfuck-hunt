@@ -18,7 +18,7 @@ class Dfuck:
 
     def move(self):
         self.rect.x += self.vel
-        if self.rect.x > 900:  # można użyć stałej WIDTH z assets.py
+        if self.rect.x > 900:
             self.rect.x = -self.DUCK_SIZE
 
     def update_animation(self, frames, anim_speed=10):
@@ -75,7 +75,7 @@ class DfuckArmed(Dfuck):
         play_quack()
         self.is_dead = True
 
-    def update(self, player=None):
+    def update(self, player=None, mode=None):
         if self.is_dead:
             self.die_anim_timer += 1
             if self.die_anim_timer % 10 == 0:

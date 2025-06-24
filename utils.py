@@ -4,7 +4,7 @@ from assets import WIDTH, HEIGHT, background, FONT
 
 def show_summary(screen, player, mode, elapsed_seconds, level_manager=None):
     overlay = pygame.Surface((WIDTH, HEIGHT))
-    overlay.set_alpha(180)  # przezroczystość tła
+    overlay.set_alpha(180) 
     overlay.fill((0, 0, 0))
     screen.blit(background, (0, 0))
     screen.blit(overlay, (0, 0))

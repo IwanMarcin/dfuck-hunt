@@ -11,7 +11,7 @@ class Player:
         self.is_reloading = False
         self.reload_timer = 0
         self.reload_duration = 150
-        self.dmg_from_poop = 5  # domyślna wartość, aktualizowana przez LevelManager
+        self.dmg_from_poop = 5 
 
     def fire(self):
         if self.is_reloading:

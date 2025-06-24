@@ -21,3 +21,7 @@ def play_music():
 def game_over():
     sound = pygame.mixer.Sound("assets/sounds/game_over.mp3")
     sound.play()
+
+def next_level():
+    sound = pygame.mixer.Sound("assets/sounds/next_level.mp3")
+    sound.play()

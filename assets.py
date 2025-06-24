@@ -7,7 +7,7 @@ pygame.init()
 pygame.mixer.init()
 pygame.mixer.set_num_channels(16)
 
-FONT = pygame.font.Font("assets/font/ARMY RUST.ttf", 32)
+FONT = pygame.font.Font("assets/font/18 ARMY.otf", 24)
 screen = pygame.display.set_mode([WIDTH, HEIGHT])
 
 background = pygame.image.load("assets/background.png").convert()

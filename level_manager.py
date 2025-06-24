@@ -1,11 +1,15 @@
+from sounds import next_level
+
 class LevelManager:
     def __init__(self):
-        self.level = 1
+        self.level = 0
         self.score_for_next = 10
 
     def update(self, hits):
-        if hits >= self.level * self.score_for_next and self.level < 50:
+        if hits >= self.score_for_next:
             self.level += 1
+            next_level()
+            self.score_for_next += 10
 
     def get_spawn_chance(self):
         base = 0.7
@@ -18,13 +22,7 @@ class LevelManager:
         return base
 
     def get_speed_multiplier(self):
-        if 20 <= self.level < 30:
-            return 1.10
-        elif 30 <= self.level < 40:
-            return 1.05
-        elif 40 <= self.level <= 50:
-            return 1.10
-        return 1.0
+        return 1.0 + self.level * 0.01
 
     def get_poop_damage(self):
         base = 5
@@ -32,7 +30,7 @@ class LevelManager:
             return base + 5
         elif 20 <= self.level < 30:
             return base + 10
-        elif 40 <= self.level <= 50:
+        elif 40 <= self.level:
             return base + 20
         return base
 
